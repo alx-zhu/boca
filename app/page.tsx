@@ -1,64 +1,135 @@
-import Image from "next/image";
+"use client";
+
+export const dynamic = "force-dynamic";
+
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Sidebar } from "@/components/sidebar/Sidebar";
+import { ChatPanel } from "@/components/chat/ChatPanel";
+import { createClient } from "@/lib/supabase/client";
+import {
+  loadConversations,
+  saveConversations,
+  createConversation,
+  upsertConversation,
+  deleteConversation,
+} from "@/lib/conversations";
+import type { Conversation, Message } from "@/types/messages";
+import type { SnapshotStatus } from "@/types/snapshots";
 
 export default function Home() {
+  const router = useRouter();
+  const supabase = createClient();
+
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [snapshotStatus, setSnapshotStatus] = useState<SnapshotStatus | null>(
+    null,
+  );
+  const [syncing, setSyncing] = useState(false);
+  const [user, setUser] = useState<{
+    name: string | null;
+    email: string | null;
+  } | null>(null);
+
+  // Hydrate from localStorage and fetch user/status on mount.
+  useEffect(() => {
+    setConversations(loadConversations());
+
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) {
+        setUser({
+          email: data.user.email ?? null,
+          name:
+            (data.user.user_metadata?.full_name as string | undefined) ??
+            data.user.email ??
+            null,
+        });
+      }
+    });
+
+    fetchStatus().then(setSnapshotStatus).catch(console.error);
+  }, [supabase]);
+
+  const fetchStatus = async (): Promise<SnapshotStatus | null> => {
+    const res = await fetch("/api/snapshots/status");
+    if (!res.ok) return null;
+    return (await res.json()) as SnapshotStatus;
+  };
+
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const next = await fetchStatus();
+      if (next) setSnapshotStatus(next);
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
+
+  const active = activeId
+    ? (conversations.find((c) => c.id === activeId) ?? null)
+    : null;
+
+  const handleMessagesChange = useCallback(
+    (messages: Message[]) => {
+      setConversations((prev) => {
+        let conv = activeId ? prev.find((c) => c.id === activeId) : null;
+        if (!conv) {
+          conv = createConversation(messages[0]?.content ?? "New conversation");
+          setActiveId(conv.id);
+        } else if (messages.length > 0 && conv.title === "New conversation") {
+          conv = { ...conv, title: messages[0].content.slice(0, 60) };
+        }
+        const updated: Conversation = { ...conv, messages };
+        const next = upsertConversation(prev, updated);
+        saveConversations(next);
+        return next;
+      });
+    },
+    [activeId],
+  );
+
+  const handleNewChat = () => setActiveId(null);
+  const handleSelectConversation = (id: string) => setActiveId(id);
+
+  const handleDeleteConversation = (id: string) => {
+    setConversations((prev) => {
+      const next = deleteConversation(prev, id);
+      saveConversations(next);
+      return next;
+    });
+    if (activeId === id) setActiveId(null);
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="flex h-screen w-screen bg-white">
+      <Sidebar
+        conversations={conversations}
+        activeId={activeId}
+        onSelect={handleSelectConversation}
+        onNew={handleNewChat}
+        onDelete={handleDeleteConversation}
+        onSignOut={handleSignOut}
+        snapshotStatus={snapshotStatus}
+        userName={user?.name ?? null}
+        userEmail={user?.email ?? null}
+      />
+      <main className="flex-1 flex flex-col min-w-0">
+        <ChatPanel
+          conversationId={active?.id ?? null}
+          initialMessages={active?.messages ?? []}
+          snapshotStatus={snapshotStatus}
+          onSync={handleSync}
+          syncing={syncing}
+          onMessagesChange={handleMessagesChange}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
       </main>
     </div>
   );
