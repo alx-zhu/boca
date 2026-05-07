@@ -129,3 +129,26 @@
     @apply font-sans;
   }
 }
+
+/* Print styles — used when the user clicks "Export PDF" (window.print()).
+   Sidebar / input / interactive buttons are hidden via Tailwind's
+   `print:hidden`. These rules tighten the page layout and prevent charts
+   from breaking awkwardly across pages. */
+@media print {
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+  /* The page wrapper uses h-screen + overflow-hidden, which would clip
+     content to one viewport during print. Override. */
+  body * {
+    overflow: visible !important;
+  }
+  .recharts-wrapper,
+  .recharts-wrapper svg {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}

@@ -14,7 +14,8 @@ export type SendEvent = (event: AgentEvent) => void;
 
 /**
  * Runs the agent loop. Emits events via `send` as it works:
- *   - "status" before each tool call
+ *   - "status" before each tool call (transient hint for the spinner)
+ *   - "tool_call" after each tool resolves (durable record of the call)
  *   - "chart" for each successful render_chart
  *   - "text" once with the final assistant text
  *
@@ -64,16 +65,36 @@ export async function runAgent(
           const context = await runDataFetcher(
             block.input as DataFetcherInput,
           );
+          send({
+            type: "tool_call",
+            call: {
+              id: block.id,
+              name: "fetch_data",
+              input: block.input,
+              summary: `${context.meta.trialCount} trials, ${context.meta.specCount} ingredient specs`,
+            },
+          });
           toolResults.push({
             type: "tool_result",
             tool_use_id: block.id,
             content: JSON.stringify(context),
           });
         } catch (err) {
+          const message =
+            err instanceof Error ? err.message : String(err);
+          send({
+            type: "tool_call",
+            call: {
+              id: block.id,
+              name: "fetch_data",
+              input: block.input,
+              summary: `Error: ${message}`,
+            },
+          });
           toolResults.push({
             type: "tool_result",
             tool_use_id: block.id,
-            content: `Error fetching data: ${err instanceof Error ? err.message : String(err)}`,
+            content: `Error fetching data: ${message}`,
             is_error: true,
           });
         }
@@ -85,12 +106,30 @@ export async function runAgent(
         const result = runChartBuilder(block.input);
         if (result.ok) {
           send({ type: "chart", spec: result.spec });
+          send({
+            type: "tool_call",
+            call: {
+              id: block.id,
+              name: "render_chart",
+              input: block.input,
+              summary: result.spec.title,
+            },
+          });
           toolResults.push({
             type: "tool_result",
             tool_use_id: block.id,
             content: "Chart rendered successfully.",
           });
         } else {
+          send({
+            type: "tool_call",
+            call: {
+              id: block.id,
+              name: "render_chart",
+              input: block.input,
+              summary: `Invalid: ${result.reason}`,
+            },
+          });
           toolResults.push({
             type: "tool_result",
             tool_use_id: block.id,

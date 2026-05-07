@@ -156,12 +156,50 @@ export function ChartRenderer({ spec }: Props) {
   }
 
   if (type === "scatter") {
+    // Scatter axes must be numeric and bind to the data keys directly —
+    // unlike bar/line where the axis just labels each row, scatter plots
+    // x and y as continuous coordinates. Without type="number" + dataKey,
+    // Recharts treats x as categorical and renders no points.
     return (
       <ResponsiveContainer width="100%" height={240}>
         <ScatterChart margin={margin}>
           <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grid} />
-          {xAxis}
-          {yAxis}
+          <XAxis
+            dataKey={xKey}
+            type="number"
+            domain={["auto", "auto"]}
+            tick={AXIS_STYLE}
+            axisLine={false}
+            tickLine={false}
+            label={
+              xLabel
+                ? {
+                    value: xLabel,
+                    position: "insideBottom",
+                    offset: -12,
+                    style: { fontSize: 11, fill: COLORS.dim },
+                  }
+                : undefined
+            }
+          />
+          <YAxis
+            dataKey={yKey}
+            type="number"
+            domain={yDomain ?? ["auto", "auto"]}
+            tick={AXIS_STYLE}
+            axisLine={false}
+            tickLine={false}
+            label={
+              yLabel
+                ? {
+                    value: yLabel,
+                    angle: -90,
+                    position: "insideLeft",
+                    style: { fontSize: 11, fill: COLORS.dim },
+                  }
+                : undefined
+            }
+          />
           {tooltip}
           {legend && <Legend wrapperStyle={{ fontSize: 12 }} />}
           <Scatter data={data} fill={COLORS.primary} opacity={0.75} />

@@ -101,9 +101,15 @@ function flattenTrial(t: RawEnrichedTrial): PuddsTrial {
 
   // Strip photos — they bloat context massively (base64) and the model
   // can't see them anyway.
-  const analysisLogs = (t.analysisLogs ?? []).map(
-    ({ photos: _photos, ...rest }): AnalysisLog => rest,
-  );
+  const analysisLogs: AnalysisLog[] = (t.analysisLogs ?? []).map((log) => ({
+    id: log.id,
+    thermalProcessingType: log.thermalProcessingType,
+    storageTimeMinutes: log.storageTimeMinutes,
+    evaluations: log.evaluations,
+    computedScores: log.computedScores,
+    averagedMetrics: log.averagedMetrics,
+    createdAt: log.createdAt,
+  }));
 
   return {
     id: t.id,

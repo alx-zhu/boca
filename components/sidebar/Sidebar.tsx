@@ -35,7 +35,7 @@ export function Sidebar({
   const groups = groupByDate(conversations);
 
   return (
-    <aside className="w-[260px] shrink-0 h-full flex flex-col bg-[#f7f7f8] border-r border-[#e8e8ea]">
+    <aside className="w-[260px] shrink-0 h-full flex flex-col bg-[#f7f7f8] border-r border-[#e8e8ea] overflow-hidden print:hidden">
       <div className="px-4 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Logo size={26} />
@@ -57,7 +57,7 @@ export function Sidebar({
         </Button>
       </div>
 
-      <ScrollArea className="flex-1 px-2">
+      <ScrollArea className="flex-1 min-h-0 px-2">
         {renderGroup("Today", groups.today, activeId, onSelect)}
         {renderGroup("Yesterday", groups.yesterday, activeId, onSelect)}
         {renderGroup("Earlier", groups.older, activeId, onSelect)}

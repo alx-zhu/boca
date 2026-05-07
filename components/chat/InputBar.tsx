@@ -51,7 +51,7 @@ export function InputBar({
   const canSend = value.trim().length > 0 && !isLoading;
 
   return (
-    <div className="px-6 pb-5 pt-2">
+    <div className="px-6 pb-5 pt-2 print:hidden">
       <div className="max-w-[760px] mx-auto">
         <div className="rounded-[14px] border border-[#d8d8db] bg-white shadow-[0_1px_2px_rgba(20,20,30,0.04)] focus-within:border-[#1a1a1a] transition-colors">
           <textarea

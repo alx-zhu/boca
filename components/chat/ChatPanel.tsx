@@ -1,17 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { differenceInHours } from "date-fns";
 import { MessageList } from "./MessageList";
 import { InputBar } from "./InputBar";
 import { WelcomeScreen } from "./WelcomeScreen";
+import { ChatHeader } from "./ChatHeader";
 import { readAgentStream } from "@/lib/sse";
-import type { Message, ApiMessage } from "@/types/messages";
+import type { Message, ApiMessage, ToolCall } from "@/types/messages";
+import type { ChartSpec } from "@/types/charts";
 import type { SnapshotStatus } from "@/types/snapshots";
 
 interface Props {
-  conversationId: string | null;
-  initialMessages: Message[];
+  /** Source of truth, owned by parent. Every change is pushed up via onMessagesChange. */
+  messages: Message[];
+  conversationTitle: string;
   snapshotStatus: SnapshotStatus | null;
   onSync: () => Promise<void>;
   syncing: boolean;
@@ -19,42 +22,19 @@ interface Props {
 }
 
 export function ChatPanel({
-  conversationId,
-  initialMessages,
+  messages,
+  conversationTitle,
   snapshotStatus,
   onSync,
   syncing,
   onMessagesChange,
 }: Props) {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [isLoading, setIsLoading] = useState(false);
-
-  // Reset local state on conversation switch.
-  useEffect(() => {
-    setMessages(initialMessages);
-  }, [conversationId, initialMessages]);
 
   const isStale = snapshotStatus?.pudds.syncedAt
     ? differenceInHours(new Date(), new Date(snapshotStatus.pudds.syncedAt)) >
       48
     : !snapshotStatus?.pudds.syncedAt;
-
-  // We propagate via a ref so the streaming loop always sees fresh state
-  // without re-running the callback on every chunk.
-  const messagesRef = useRef(messages);
-  messagesRef.current = messages;
-
-  const update = useCallback(
-    (next: Message[] | ((prev: Message[]) => Message[])) => {
-      setMessages((prev) => {
-        const final = typeof next === "function" ? next(prev) : next;
-        messagesRef.current = final;
-        onMessagesChange(final);
-        return final;
-      });
-    },
-    [onMessagesChange],
-  );
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -76,17 +56,41 @@ export function ChatPanel({
         createdAt: new Date().toISOString(),
       };
 
-      const apiHistory: ApiMessage[] = [...messagesRef.current, userMsg].map(
-        (m) => ({ role: m.role, content: m.content }),
-      );
-
-      update((prev) => [...prev, userMsg, assistantMsg]);
+      // Track the in-flight message list locally during streaming. Each
+      // mutation pushes the new array up to the parent (which persists it).
+      let working: Message[] = [...messages, userMsg, assistantMsg];
+      onMessagesChange(working);
       setIsLoading(true);
 
-      const patch = (p: Partial<Message>) =>
-        update((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, ...p } : m)),
+      const patch = (p: Partial<Message>) => {
+        working = working.map((m) =>
+          m.id === assistantId ? { ...m, ...p } : m,
         );
+        onMessagesChange(working);
+      };
+
+      const addChart = (spec: ChartSpec) => {
+        working = working.map((m) =>
+          m.id === assistantId
+            ? { ...m, charts: [...(m.charts ?? []), spec] }
+            : m,
+        );
+        onMessagesChange(working);
+      };
+
+      const addToolCall = (call: ToolCall) => {
+        working = working.map((m) =>
+          m.id === assistantId
+            ? { ...m, toolCalls: [...(m.toolCalls ?? []), call] }
+            : m,
+        );
+        onMessagesChange(working);
+      };
+
+      const apiHistory: ApiMessage[] = [...messages, userMsg].map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
 
       try {
         const res = await fetch("/api/chat", {
@@ -103,21 +107,14 @@ export function ChatPanel({
         for await (const event of readAgentStream(res)) {
           if (event.type === "status") {
             patch({ status: event.text });
+          } else if (event.type === "tool_call") {
+            addToolCall(event.call);
           } else if (event.type === "chart") {
-            update((prev) =>
-              prev.map((m) =>
-                m.id === assistantId
-                  ? { ...m, charts: [...(m.charts ?? []), event.spec] }
-                  : m,
-              ),
-            );
+            addChart(event.spec);
           } else if (event.type === "text") {
             patch({ content: event.text, status: null });
           } else if (event.type === "error") {
-            patch({
-              content: `Error: ${event.text}`,
-              status: null,
-            });
+            patch({ content: `Error: ${event.text}`, status: null });
           }
         }
       } catch (err) {
@@ -129,13 +126,23 @@ export function ChatPanel({
         setIsLoading(false);
       }
     },
-    [isLoading, update],
+    [isLoading, messages, onMessagesChange],
   );
 
   const hasMessages = messages.length > 0;
 
+  // Native browser print → "Save as PDF" works in every browser. Print CSS
+  // (in globals.css) hides the sidebar/input/buttons so only the chat
+  // content makes it onto the page.
+  const handleExport = () => window.print();
+
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full min-h-0 bg-white">
+      <ChatHeader
+        title={hasMessages ? conversationTitle : "New conversation"}
+        onExport={handleExport}
+        canExport={hasMessages}
+      />
       {hasMessages ? (
         <MessageList messages={messages} />
       ) : (

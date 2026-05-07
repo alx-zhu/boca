@@ -2,6 +2,8 @@
 
 import { ChartCard } from "@/components/charts/ChartCard";
 import { Logo } from "@/components/Logo";
+import { Markdown } from "@/components/Markdown";
+import { ToolCallCard } from "./ToolCallCard";
 import type { Message } from "@/types/messages";
 
 interface Props {
@@ -29,6 +31,14 @@ export function MessageBubble({ message }: Props) {
       </div>
 
       <div className="pl-[30px] flex flex-col gap-2">
+        {message.toolCalls && message.toolCalls.length > 0 && (
+          <div className="flex flex-col gap-1">
+            {message.toolCalls.map((call, i) => (
+              <ToolCallCard key={`${call.id}-${i}`} call={call} />
+            ))}
+          </div>
+        )}
+
         {message.status && (
           <div className="flex items-center gap-2 text-[13px] text-[#6b6b70]">
             <Spinner />
@@ -36,11 +46,7 @@ export function MessageBubble({ message }: Props) {
           </div>
         )}
 
-        {message.content && (
-          <div className="text-[14px] text-[#1a1a1a] leading-[1.6] whitespace-pre-wrap">
-            {message.content}
-          </div>
-        )}
+        {message.content && <Markdown>{message.content}</Markdown>}
 
         {message.charts && message.charts.length > 0 && (
           <div className="flex flex-col gap-1">
