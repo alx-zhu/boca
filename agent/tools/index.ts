@@ -1,87 +1,103 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import {
+  TRIAL_FIELDS,
+  INGREDIENT_FIELDS,
+  SPEC_FIELDS,
+} from "./queries/filters";
+
+const METRIC_KEY_ENUM = [
+  "tasteRating",
+  "sweetnessIntensity",
+  "sweetnessRating",
+  "flavorIntensity",
+  "aftertasteIntensity",
+  "thicknessIntensity",
+  "textureIntensity",
+  "textureRating",
+  "colorRating",
+];
+
+/** Same shape on every query tool — the only difference is which fields are valid. */
+function fieldContainsSchema(fieldEnum: readonly string[]) {
+  return {
+    type: "array" as const,
+    description:
+      "Each entry constrains one field. AND across entries, OR within values. All matches are case-insensitive substring.",
+    items: {
+      type: "object" as const,
+      properties: {
+        field: { type: "string" as const, enum: [...fieldEnum] },
+        values: {
+          type: "array" as const,
+          items: { type: "string" as const },
+        },
+      },
+      required: ["field", "values"],
+    },
+  };
+}
 
 export const TOOLS: Anthropic.Tool[] = [
   {
-    name: "fetch_data",
-    description: `Fetches trial and ingredient data from the user's most recent snapshots.
+    name: "query_trials",
+    description: `Reads from the trials table (formulation trials from pudds-notes-platform).
 
-Always call this tool before answering any analytical question. Do not answer from memory — all answers must come from this tool's output.
+Each trial has setup (date, processingType, flavor), ingredients (flat list with name + %), and analysisLogs with sensory evaluations + computedScores.
 
-Use \`filters\` to narrow the dataset before it reaches you. Filtering server-side keeps token usage low and keeps you focused.
-
-The returned context contains:
-- trials: formulation trials with setup, ingredients (flat list with name + %), and analysisLogs (each with computedScores already calculated)
-- masterIngredients: full ingredient library
-- ingredientSpecs: supplier spec sheet data (only when include_ingredient_specs is true)
-- meta: counts, sync timestamps, and which filters were applied`,
+Filter via fieldContains. Available fields: ${TRIAL_FIELDS.join(", ")}.
+- ingredientName matches against the names of any ingredient on the trial
+- ingredientType matches against the Pudds-classified type (protein | water-base | texture | sweetener | flavor | other)
+- date is the ISO setup date; substring match works for partial dates ("2026-05" matches all of May 2026)`,
     input_schema: {
       type: "object" as const,
       properties: {
-        include_ingredient_specs: {
-          type: "boolean",
-          description:
-            "Set true ONLY when the question involves supplier spec sheet data (CAS numbers, allergens, technical properties, supplier names). Otherwise leave false.",
-        },
-        filters: {
-          type: "object",
-          description: "Server-side filters applied to trials before they reach you.",
-          properties: {
-            flavor: {
-              type: "string",
-              enum: ["chocolate", "vanilla"],
-              description: "Only include trials with this flavor.",
-            },
-            processingType: {
-              type: "string",
-              enum: ["shelftop", "industrial"],
-              description:
-                "Only include trials with this processing type. Note: 'shelftop' is the internal name for benchtop trials.",
-            },
-            trialNumbers: {
-              type: "array",
-              items: { type: "number" },
-              description: "Only include trials with these specific trial numbers.",
-            },
-            ingredientNames: {
-              type: "array",
-              items: { type: "string" },
-              description:
-                "Only include trials that contain at least one ingredient whose name matches (case-insensitive substring) one of these strings. E.g. ['xanthan'] matches 'Xanthan Gum'.",
-            },
-            metricKeys: {
-              type: "array",
-              items: {
-                type: "string",
-                enum: [
-                  "tasteRating",
-                  "sweetnessIntensity",
-                  "sweetnessRating",
-                  "flavorIntensity",
-                  "aftertasteIntensity",
-                  "thicknessIntensity",
-                  "textureIntensity",
-                  "textureRating",
-                  "colorRating",
-                ],
-              },
-              description:
-                "Project evaluations down to only these metric keys. Use this to reduce payload size when the question only needs specific metrics.",
-            },
-            dateFrom: {
-              type: "string",
-              description: "ISO date. Only include trials on or after this date.",
-            },
-            dateTo: {
-              type: "string",
-              description: "ISO date. Only include trials on or before this date.",
-            },
-          },
-        },
-        spec_fields: {
+        fieldContains: fieldContainsSchema(TRIAL_FIELDS),
+        metricKeys: {
           type: "array",
-          items: { type: "string" },
+          items: { type: "string", enum: METRIC_KEY_ENUM },
           description:
-            "When include_ingredient_specs is true, only return these spec fields. Defaults to a sensible subset (product_name, supplier, ingredient_function, typical_use_level, allergens, ph, shelf_life_months, description). Use this if you need fields outside the default subset.",
+            "Project each evaluation down to only these metric keys. Doesn't drop trials. Use to keep payloads lean when only specific metrics matter.",
+        },
+      },
+    },
+  },
+  {
+    name: "query_ingredients",
+    description: `Reads from the ingredients table (Pudds master ingredient library).
+
+Each ingredient: id, name, abbreviation, type, cost, solid. Filter via fieldContains. Available fields: ${INGREDIENT_FIELDS.join(", ")}.
+
+NOTE: 'type' is the Pudds-classified category (protein | water-base | texture | sweetener | flavor | other). For finer-grained "function" classification (stabilizer, emulsifier, etc.), query the specs table — that lives there.`,
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        fieldContains: fieldContainsSchema(INGREDIENT_FIELDS),
+      },
+    },
+  },
+  {
+    name: "query_specs",
+    description: `Reads from the ingredient specs table (supplier spec sheets from cpg-product-extractor).
+
+Each spec describes one supplier product: product_name, supplier, ingredient_function, allergens, CAS number, regulatory status, technical properties (pH, viscosity, etc.), and more.
+
+Filter via fieldContains. Available fields: ${SPEC_FIELDS.join(", ")}.
+
+KEY USE CASES:
+- "all PROTEIN ingredients" / "stabilizers" / "emulsifiers" → fieldContains: [{ field: "ingredient_function", values: ["protein"] }]
+- "ingredients from supplier X" → fieldContains: [{ field: "supplier", values: ["X"] }]
+- "anything with soy allergen" → fieldContains: [{ field: "allergens", values: ["soy"] }]
+
+To find which trials use these ingredients, take product_name values from the result and follow up with query_trials filtering by ingredientName.`,
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        fieldContains: fieldContainsSchema(SPEC_FIELDS),
+        fields: {
+          type: "array",
+          items: { type: "string", enum: [...SPEC_FIELDS] },
+          description:
+            "Project each returned spec to only these fields. Defaults to product_name, supplier, ingredient_function, typical_use_level, allergens, ph, shelf_life_months, description.",
         },
       },
     },

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { differenceInHours } from "date-fns";
 import { MessageList } from "./MessageList";
 import { InputBar } from "./InputBar";
 import { WelcomeScreen } from "./WelcomeScreen";
@@ -16,6 +15,7 @@ interface Props {
   messages: Message[];
   conversationTitle: string;
   snapshotStatus: SnapshotStatus | null;
+  lastRefreshed: { pudds: string | null; extractor: string | null };
   onSync: () => Promise<void>;
   syncing: boolean;
   onMessagesChange: (messages: Message[]) => void;
@@ -25,16 +25,19 @@ export function ChatPanel({
   messages,
   conversationTitle,
   snapshotStatus,
+  lastRefreshed,
   onSync,
   syncing,
   onMessagesChange,
 }: Props) {
   const [isLoading, setIsLoading] = useState(false);
 
-  const isStale = snapshotStatus?.pudds.syncedAt
-    ? differenceInHours(new Date(), new Date(snapshotStatus.pudds.syncedAt)) >
-      48
-    : !snapshotStatus?.pudds.syncedAt;
+  const hasNewer = (snapshotDate: string | null, pulled: string | null) =>
+    !!snapshotDate && (!pulled || new Date(snapshotDate) > new Date(pulled));
+
+  const isStale =
+    hasNewer(snapshotStatus?.pudds.syncedAt ?? null, lastRefreshed.pudds) ||
+    hasNewer(snapshotStatus?.extractor.syncedAt ?? null, lastRefreshed.extractor);
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -157,6 +160,7 @@ export function ChatPanel({
         onSend={sendMessage}
         isLoading={isLoading}
         snapshotStatus={snapshotStatus}
+        lastRefreshed={lastRefreshed}
         onSync={() => void onSync()}
         syncing={syncing}
         isStale={isStale}

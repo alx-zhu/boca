@@ -18,6 +18,7 @@ interface Props {
   onDelete: (id: string) => void;
   onSignOut: () => void;
   snapshotStatus: SnapshotStatus | null;
+  lastRefreshed: { pudds: string | null; extractor: string | null };
   userName: string | null;
   userEmail: string | null;
 }
@@ -29,6 +30,7 @@ export function Sidebar({
   onNew,
   onSignOut,
   snapshotStatus,
+  lastRefreshed,
   userName,
   userEmail,
 }: Props) {
@@ -70,7 +72,9 @@ export function Sidebar({
 
       <Separator className="bg-[#e8e8ea]" />
 
-      {snapshotStatus && <DataSourceStatus status={snapshotStatus} />}
+      {snapshotStatus && (
+        <DataSourceStatus status={snapshotStatus} lastRefreshed={lastRefreshed} />
+      )}
 
       <Separator className="bg-[#e8e8ea]" />
 
@@ -124,7 +128,7 @@ function renderGroup(
           }
         >
           <MessageSquare className="h-3.5 w-3.5 shrink-0 text-[#9a9a9e]" />
-          <span className="truncate">{c.title}</span>
+          <span className="truncate min-w-0">{c.title}</span>
         </button>
       ))}
     </div>

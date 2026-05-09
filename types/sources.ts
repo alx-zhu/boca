@@ -127,16 +127,3 @@ export const DEFAULT_SPEC_FIELDS: IngredientSpecField[] = [
   "description",
 ];
 
-export interface PreparedContext {
-  trials: PuddsTrial[];
-  masterIngredients: PuddsIngredient[];
-  ingredientSpecs: IngredientSpecFlat[];
-  meta: {
-    trialCount: number;
-    ingredientCount: number;
-    specCount: number;
-    puddsSyncedAt: string | null;
-    extractorSyncedAt: string | null;
-    appliedFilters?: Record<string, unknown>;
-  };
-}

@@ -1,13 +1,14 @@
 "use client";
 
-import { differenceInHours, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import type { SnapshotStatus } from "@/types/snapshots";
 
 interface Props {
   status: SnapshotStatus;
+  lastRefreshed: { pudds: string | null; extractor: string | null };
 }
 
-export function DataSourceStatus({ status }: Props) {
+export function DataSourceStatus({ status, lastRefreshed }: Props) {
   return (
     <div className="px-4 py-3">
       <p className="text-[10.5px] font-semibold text-[#9a9a9e] uppercase tracking-wider mb-2">
@@ -17,12 +18,14 @@ export function DataSourceStatus({ status }: Props) {
         <SourceRow
           label="Pudds Notes"
           syncedAt={status.pudds.syncedAt}
+          lastRefreshed={lastRefreshed.pudds}
           count={status.pudds.trialCount}
           unit="trials"
         />
         <SourceRow
           label="Ingredient DB"
           syncedAt={status.extractor.syncedAt}
+          lastRefreshed={lastRefreshed.extractor}
           count={status.extractor.specCount}
           unit="ingredients"
         />
@@ -34,16 +37,17 @@ export function DataSourceStatus({ status }: Props) {
 interface RowProps {
   label: string;
   syncedAt: string | null;
+  lastRefreshed: string | null;
   count: number;
   unit: string;
 }
 
-function SourceRow({ label, syncedAt, count, unit }: RowProps) {
-  const hours = syncedAt
-    ? differenceInHours(new Date(), new Date(syncedAt))
-    : null;
+function SourceRow({ label, syncedAt, lastRefreshed, count, unit }: RowProps) {
   const isMissing = !syncedAt;
-  const isStale = hours !== null && hours > 4;
+  const isStale =
+    !isMissing &&
+    (lastRefreshed === null ||
+      new Date(syncedAt!) > new Date(lastRefreshed));
 
   const dotColor = isMissing
     ? "#dc2626"
@@ -54,8 +58,8 @@ function SourceRow({ label, syncedAt, count, unit }: RowProps) {
   const subtext = isMissing
     ? "Not synced"
     : isStale
-      ? `Stale — last synced ${formatDistanceToNow(new Date(syncedAt!))} ago`
-      : `Synced ${formatDistanceToNow(new Date(syncedAt!))} ago · ${count} ${unit}`;
+      ? "New version available"
+      : `Synced ${formatDistanceToNow(new Date(lastRefreshed!))} ago · ${count} ${unit}`;
 
   return (
     <div className="flex items-start gap-2">

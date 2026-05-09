@@ -12,11 +12,12 @@ import type { SnapshotStatus } from "@/types/snapshots";
 
 interface Props {
   status: SnapshotStatus | null;
+  lastRefreshed: { pudds: string | null; extractor: string | null };
   onSync: () => void;
   syncing: boolean;
 }
 
-export function SyncPopover({ status, onSync, syncing }: Props) {
+export function SyncPopover({ status, lastRefreshed, onSync, syncing }: Props) {
   const trialCount = status?.pudds.trialCount ?? 0;
   const specCount = status?.extractor.specCount ?? 0;
 
@@ -40,6 +41,7 @@ export function SyncPopover({ status, onSync, syncing }: Props) {
           <Row
             label="Pudds snapshot"
             syncedAt={status?.pudds.syncedAt ?? null}
+            lastRefreshed={lastRefreshed.pudds}
             count={trialCount}
             unit="trials"
           />
@@ -47,6 +49,7 @@ export function SyncPopover({ status, onSync, syncing }: Props) {
           <Row
             label="Ingredients snapshot"
             syncedAt={status?.extractor.syncedAt ?? null}
+            lastRefreshed={lastRefreshed.extractor}
             count={specCount}
             unit="ingredient specs"
             sublabel="Scraped from supplier sheets"
@@ -76,18 +79,31 @@ interface RowProps {
   label: string;
   sublabel?: string;
   syncedAt: string | null;
+  lastRefreshed: string | null;
   count: number;
   unit: string;
 }
 
-function Row({ label, sublabel, syncedAt, count, unit }: RowProps) {
-  const formatted = syncedAt
-    ? formatDistanceToNow(new Date(syncedAt), { addSuffix: true })
-    : "Never synced";
+function Row({ label, sublabel, syncedAt, lastRefreshed, count, unit }: RowProps) {
+  const hasNewer =
+    !!syncedAt &&
+    (!lastRefreshed || new Date(syncedAt) > new Date(lastRefreshed));
+
+  const statusText = !syncedAt
+    ? "Never synced"
+    : hasNewer
+      ? "New version available"
+      : `Synced ${formatDistanceToNow(new Date(lastRefreshed!), { addSuffix: true })}`;
+
   return (
     <div>
       <p className="text-[13px] font-medium text-[#1a1a1a]">{label}</p>
-      <p className="text-[11.5px] text-[#9a9a9e] mt-0.5">{formatted}</p>
+      <p
+        className="text-[11.5px] mt-0.5"
+        style={{ color: hasNewer ? "#b8761c" : "#9a9a9e" }}
+      >
+        {statusText}
+      </p>
       <p className="text-[11.5px] text-[#9a9a9e]">
         {count} {unit}
         {sublabel ? ` · ${sublabel.toLowerCase()}` : ""}

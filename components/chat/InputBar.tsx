@@ -10,6 +10,7 @@ interface Props {
   onSend: (message: string) => void;
   isLoading: boolean;
   snapshotStatus: SnapshotStatus | null;
+  lastRefreshed: { pudds: string | null; extractor: string | null };
   onSync: () => void;
   syncing: boolean;
   isStale: boolean;
@@ -19,6 +20,7 @@ export function InputBar({
   onSend,
   isLoading,
   snapshotStatus,
+  lastRefreshed,
   onSync,
   syncing,
   isStale,
@@ -68,6 +70,7 @@ export function InputBar({
           <div className="flex items-center justify-between px-3 pb-2">
             <SyncPopover
               status={snapshotStatus}
+              lastRefreshed={lastRefreshed}
               onSync={onSync}
               syncing={syncing}
             />
@@ -88,7 +91,7 @@ export function InputBar({
         {isStale && (
           <div className="mt-2 flex items-center justify-center gap-1.5 text-[11.5px] text-[#b8761c]">
             <AlertCircle className="h-3 w-3" />
-            <span>Data may be outdated · Last synced 2+ days ago</span>
+            <span>New data available · Refresh to get the latest</span>
           </div>
         )}
       </div>

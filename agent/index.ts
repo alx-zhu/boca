@@ -2,12 +2,19 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { getAnthropicClient } from "@/lib/anthropic";
 import { SYSTEM_PROMPT } from "./systemPrompt";
 import { TOOLS } from "./tools";
-import { runDataFetcher, type DataFetcherInput } from "./tools/dataFetcher";
+import {
+  runQueryTrials,
+  runQueryIngredients,
+  runQuerySpecs,
+  type QueryTrialsInput,
+  type QueryIngredientsInput,
+  type QuerySpecsInput,
+} from "./tools/queries";
 import { runChartBuilder } from "./tools/chartBuilder";
 import type { ApiMessage, AgentEvent } from "@/types/messages";
 
 const MODEL = "claude-sonnet-4-6";
-const MAX_ITERATIONS = 5;
+const MAX_ITERATIONS = 8;
 const MAX_TOKENS = 4096;
 
 export type SendEvent = (event: AgentEvent) => void;
@@ -59,45 +66,39 @@ export async function runAgent(
     for (const block of response.content) {
       if (block.type !== "tool_use") continue;
 
-      if (block.name === "fetch_data") {
-        send({ type: "status", text: "Fetching trial data…" });
-        try {
-          const context = await runDataFetcher(
-            block.input as DataFetcherInput,
-          );
-          send({
-            type: "tool_call",
-            call: {
-              id: block.id,
-              name: "fetch_data",
-              input: block.input,
-              summary: `${context.meta.trialCount} trials, ${context.meta.specCount} ingredient specs`,
-            },
-          });
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: block.id,
-            content: JSON.stringify(context),
-          });
-        } catch (err) {
-          const message =
-            err instanceof Error ? err.message : String(err);
-          send({
-            type: "tool_call",
-            call: {
-              id: block.id,
-              name: "fetch_data",
-              input: block.input,
-              summary: `Error: ${message}`,
-            },
-          });
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: block.id,
-            content: `Error fetching data: ${message}`,
-            is_error: true,
-          });
-        }
+      if (block.name === "query_trials") {
+        send({ type: "status", text: "Querying trials…" });
+        await runQuery(
+          block,
+          () => runQueryTrials(block.input as QueryTrialsInput),
+          (out) => `${out.meta.count} trials`,
+          toolResults,
+          send,
+        );
+        continue;
+      }
+
+      if (block.name === "query_ingredients") {
+        send({ type: "status", text: "Querying ingredients…" });
+        await runQuery(
+          block,
+          () => runQueryIngredients(block.input as QueryIngredientsInput),
+          (out) => `${out.meta.count} ingredients`,
+          toolResults,
+          send,
+        );
+        continue;
+      }
+
+      if (block.name === "query_specs") {
+        send({ type: "status", text: "Querying ingredient specs…" });
+        await runQuery(
+          block,
+          () => runQuerySpecs(block.input as QuerySpecsInput),
+          (out) => `${out.meta.count} specs`,
+          toolResults,
+          send,
+        );
         continue;
       }
 
@@ -162,6 +163,49 @@ export async function runAgent(
     type: "error",
     text: "Reached the maximum number of reasoning steps without a final answer. Try a more specific question.",
   });
+}
+
+async function runQuery<T>(
+  block: Anthropic.ToolUseBlock,
+  exec: () => Promise<T>,
+  summarize: (out: T) => string,
+  toolResults: Anthropic.ToolResultBlockParam[],
+  send: SendEvent,
+): Promise<void> {
+  try {
+    const out = await exec();
+    send({
+      type: "tool_call",
+      call: {
+        id: block.id,
+        name: block.name,
+        input: block.input,
+        summary: summarize(out),
+      },
+    });
+    toolResults.push({
+      type: "tool_result",
+      tool_use_id: block.id,
+      content: JSON.stringify(out),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    send({
+      type: "tool_call",
+      call: {
+        id: block.id,
+        name: block.name,
+        input: block.input,
+        summary: `Error: ${message}`,
+      },
+    });
+    toolResults.push({
+      type: "tool_result",
+      tool_use_id: block.id,
+      content: `Error: ${message}`,
+      is_error: true,
+    });
+  }
 }
 
 function extractText(content: Anthropic.ContentBlock[]): string {

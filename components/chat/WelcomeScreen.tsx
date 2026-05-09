@@ -31,8 +31,7 @@ export function WelcomeScreen({
             <div className="flex items-center gap-2">
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>
-                Snapshots are 2+ days old. Results may not reflect recent
-                trials.
+                New snapshot available. Results may not reflect recent changes.
               </span>
             </div>
             <button

@@ -29,6 +29,10 @@ export default function Home() {
   const [snapshotStatus, setSnapshotStatus] = useState<SnapshotStatus | null>(
     null,
   );
+  const [lastRefreshed, setLastRefreshed] = useState<{
+    pudds: string | null;
+    extractor: string | null;
+  }>({ pudds: null, extractor: null });
   const [syncing, setSyncing] = useState(false);
   const [user, setUser] = useState<{
     name: string | null;
@@ -52,6 +56,10 @@ export default function Home() {
     queueMicrotask(() => {
       if (cancelled) return;
       setConversations(loadConversations());
+      setLastRefreshed({
+        pudds: localStorage.getItem("boca:last-sync:pudds"),
+        extractor: localStorage.getItem("boca:last-sync:extractor"),
+      });
     });
 
     supabase.auth.getUser().then(({ data }) => {
@@ -80,7 +88,18 @@ export default function Home() {
     setSyncing(true);
     try {
       const next = await fetchStatus();
-      if (next) setSnapshotStatus(next);
+      if (next) {
+        setSnapshotStatus(next);
+        const refreshed = {
+          pudds: next.pudds.syncedAt,
+          extractor: next.extractor.syncedAt,
+        };
+        if (refreshed.pudds)
+          localStorage.setItem("boca:last-sync:pudds", refreshed.pudds);
+        if (refreshed.extractor)
+          localStorage.setItem("boca:last-sync:extractor", refreshed.extractor);
+        setLastRefreshed(refreshed);
+      }
     } finally {
       setSyncing(false);
     }
@@ -113,6 +132,29 @@ export default function Home() {
       draftIdRef.current = nextDraft;
       setActiveId(id);
       setDraftId(nextDraft);
+
+      // Fire-and-forget: replace the truncated title with a Haiku-generated one.
+      const firstContent = messages[0]?.content;
+      if (firstContent) {
+        const convId = id;
+        fetch("/api/title", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: firstContent }),
+        })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data: { title: string } | null) => {
+            if (!data?.title) return;
+            setConversations((prev) => {
+              const conv = prev.find((c) => c.id === convId);
+              if (!conv) return prev;
+              const next = upsertConversation(prev, { ...conv, title: data.title });
+              saveConversations(next);
+              return next;
+            });
+          })
+          .catch(() => {});
+      }
     }
 
     setConversations((prev) => {
@@ -172,6 +214,7 @@ export default function Home() {
         onDelete={handleDeleteConversation}
         onSignOut={handleSignOut}
         snapshotStatus={snapshotStatus}
+        lastRefreshed={lastRefreshed}
         userName={user?.name ?? null}
         userEmail={user?.email ?? null}
       />
@@ -181,6 +224,7 @@ export default function Home() {
           messages={active?.messages ?? []}
           conversationTitle={active?.title ?? "New conversation"}
           snapshotStatus={snapshotStatus}
+          lastRefreshed={lastRefreshed}
           onSync={handleSync}
           syncing={syncing}
           onMessagesChange={handleMessagesChange}
