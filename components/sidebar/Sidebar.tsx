@@ -2,7 +2,6 @@
 
 import { Plus, MessageSquare, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { DataSourceStatus } from "./DataSourceStatus";
 import { Logo } from "@/components/Logo";
@@ -59,7 +58,7 @@ export function Sidebar({
         </Button>
       </div>
 
-      <ScrollArea className="flex-1 min-h-0 px-2">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2">
         {renderGroup("Today", groups.today, activeId, onSelect)}
         {renderGroup("Yesterday", groups.yesterday, activeId, onSelect)}
         {renderGroup("Earlier", groups.older, activeId, onSelect)}
@@ -68,12 +67,15 @@ export function Sidebar({
             No conversations yet.
           </p>
         )}
-      </ScrollArea>
+      </div>
 
       <Separator className="bg-[#e8e8ea]" />
 
       {snapshotStatus && (
-        <DataSourceStatus status={snapshotStatus} lastRefreshed={lastRefreshed} />
+        <DataSourceStatus
+          status={snapshotStatus}
+          lastRefreshed={lastRefreshed}
+        />
       )}
 
       <Separator className="bg-[#e8e8ea]" />
@@ -128,7 +130,7 @@ function renderGroup(
           }
         >
           <MessageSquare className="h-3.5 w-3.5 shrink-0 text-[#9a9a9e]" />
-          <span className="truncate min-w-0">{c.title}</span>
+          <span className="truncate min-w-0 text-ellipsis">{c.title}</span>
         </button>
       ))}
     </div>
@@ -145,7 +147,10 @@ function groupByDate(convs: Conversation[]): {
   const older: Conversation[] = [];
   const todayStart = startOfDay(new Date());
   for (const c of convs) {
-    const diff = differenceInDays(todayStart, startOfDay(new Date(c.updatedAt)));
+    const diff = differenceInDays(
+      todayStart,
+      startOfDay(new Date(c.updatedAt)),
+    );
     if (diff <= 0) today.push(c);
     else if (diff === 1) yesterday.push(c);
     else older.push(c);
